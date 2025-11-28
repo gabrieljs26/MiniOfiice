@@ -1,0 +1,3 @@
+Necesita tener Instalado las siguiente librerías:
+pyside6
+pyinstaller
