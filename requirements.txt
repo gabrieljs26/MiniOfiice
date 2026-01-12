@@ -1,0 +1,12 @@
+# Mini Office - Requisitos del proyecto
+# Procesador de texto con reconocimiento de voz
+
+# Interfaz gráfica
+PySide6==6.9.2
+
+# Reconocimiento de voz
+PyAudio==0.2.14
+SpeechRecognition==3.14.5
+
+# Construcción de ejecutables
+pyinstaller>=6.0.0

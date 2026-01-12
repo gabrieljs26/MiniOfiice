@@ -4,8 +4,10 @@ from PySide6.QtWidgets import (
     QLineEdit, QPushButton, QCheckBox, QHBoxLayout, QStatusBar
 )
 from PySide6.QtGui import QAction, QIcon, QTextCursor, QFont, QTextImageFormat, QTextDocument
-from PySide6.QtCore import QSize
+from PySide6.QtCore import QSize, QThread, Signal
 import sys
+import speech_recognition as sr
+import threading
 
 class MiniOffice(QMainWindow):
     def __init__(self):
@@ -67,7 +69,10 @@ class MiniOffice(QMainWindow):
         self.etiqueta_contador = QLabel("Palabras: 0 | Caracteres: 0")
         self.barra_estado.addPermanentWidget(self.etiqueta_contador)
         
-     
+        # Inicializar reconocedor de voz
+        self.recognizer = sr.Recognizer()
+        self.escuchando = False
+        
         self.barra_estado.showMessage("Listo. Presiona Ctrl+N para crear un nuevo documento.")
 
         menu_bar = self.menuBar()
@@ -126,7 +131,8 @@ class MiniOffice(QMainWindow):
             "Color de texto": ("format-text-color", self.color_palabra, None),
             "Color de fondo": ("format-fill-color", self.color_fondo, None),
             "Tipo de letra": ("preferences-desktop-font", self.tipo_letra, None),
-            "Insertar imagen": ("insert-image", self.insertar_imagen, None)
+            "Insertar imagen": ("insert-image", self.insertar_imagen, None),
+            "🎤 Reconocimiento de voz": ("audio-input-microphone", self.iniciar_reconocimiento_voz, "Ctrl+R")
         }
         for nombre, (icono, func, atajo) in acciones_personalizar.items():
             accion = QAction(nombre, self)
@@ -283,6 +289,126 @@ class MiniOffice(QMainWindow):
                     self.barra_estado.showMessage("Texto reemplazado")
                 else:
                     self.barra_estado.showMessage("No se encontró el texto para reemplazar")
+
+    # ==================== RECONOCIMIENTO DE VOZ ====================
+    def iniciar_reconocimiento_voz(self):
+        """Inicia o detiene el reconocimiento de voz"""
+        if self.escuchando:
+            self.escuchando = False
+            self.barra_estado.showMessage("Reconocimiento de voz detenido")
+        else:
+            self.escuchando = True
+            self.barra_estado.showMessage("🎤 Escuchando... Habla ahora (Ctrl+R para detener)")
+            # Ejecutar en un hilo separado para no bloquear la UI
+            threading.Thread(target=self.reconocer_voz, daemon=True).start()
+    
+    def reconocer_voz(self):
+        """
+        Captura audio del micrófono y lo convierte a texto usando SpeechRecognition
+        - Usa PyAudio (a través de sr.Microphone) para capturar audio
+        - Usa Recognizer para calibrar, escuchar y procesar el audio
+        - Reconoce en español usando Google Speech Recognition
+        - Detecta comandos especiales como negrita, cursiva, subrayado, etc.
+        """
+        try:
+            # Microphone: wrapper sobre PyAudio que abre el micrófono
+            with sr.Microphone() as source:
+                # Recognizer: calibra el ruido ambiente
+                self.barra_estado.showMessage("🎤 Ajustando ruido ambiente...")
+                self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
+                
+                self.barra_estado.showMessage("🎤 Escuchando... Habla ahora")
+                
+                # Recognizer: escucha el audio del micrófono
+                audio = self.recognizer.listen(source, timeout=10, phrase_time_limit=15)
+                
+                self.barra_estado.showMessage("🔄 Procesando audio...")
+                
+                # Recognizer: redirige el audio a Google Speech Recognition
+                try:
+                    texto = self.recognizer.recognize_google(audio, language="es-ES")
+                    
+                    # Procesar comandos de voz especiales
+                    if self.procesar_comando_voz(texto):
+                        # Si fue un comando, no insertar el texto
+                        return
+                    
+                    # Insertar el texto reconocido en el cursor actual
+                    cursor = self.text_edit.textCursor()
+                    cursor.insertText(texto + " ")
+                    self.barra_estado.showMessage(f"✅ Texto reconocido: {texto}")
+                except sr.UnknownValueError:
+                    self.barra_estado.showMessage("❌ No se pudo entender el audio")
+                except sr.RequestError as e:
+                    self.barra_estado.showMessage(f"❌ Error en el servicio de reconocimiento: {e}")
+                    
+        except sr.WaitTimeoutError:
+            self.barra_estado.showMessage("❌ Tiempo de espera agotado. No se detectó audio")
+        except Exception as e:
+            self.barra_estado.showMessage(f"❌ Error: {str(e)}")
+        finally:
+            self.escuchando = False
+    
+    def procesar_comando_voz(self, texto):
+        """
+        Detecta y procesa comandos de voz especiales
+        Retorna True si se procesó un comando, False si es texto normal
+        """
+        texto_lower = texto.lower().strip()
+        
+        # Comandos de formato
+        if "negrita" in texto_lower or "bold" in texto_lower:
+            self.aplicar_negrita()
+            self.barra_estado.showMessage("✅ Comando: Negrita activada")
+            return True
+        
+        elif "cursiva" in texto_lower or "itálica" in texto_lower or "italic" in texto_lower:
+            self.aplicar_cursiva()
+            self.barra_estado.showMessage("✅ Comando: Cursiva activada")
+            return True
+        
+        elif "subrayado" in texto_lower or "underline" in texto_lower:
+            self.aplicar_subrayado()
+            self.barra_estado.showMessage("✅ Comando: Subrayado activado")
+            return True
+        
+        # Comandos de archivo
+        elif "guardar archivo" in texto_lower or "guardar documento" in texto_lower:
+            self.guardar_archivo()
+            self.barra_estado.showMessage("✅ Comando: Guardando archivo...")
+            return True
+        
+        elif "nuevo documento" in texto_lower or "documento nuevo" in texto_lower:
+            self.nuevo_documento()
+            self.barra_estado.showMessage("✅ Comando: Nuevo documento creado")
+            return True
+        
+        # No es un comando, es texto normal
+        return False
+    
+    def aplicar_negrita(self):
+        """Aplica formato negrita al texto seleccionado o activa para el siguiente texto"""
+        cursor = self.text_edit.textCursor()
+        formato = cursor.charFormat()
+        formato.setFontWeight(QFont.Weight.Bold if formato.fontWeight() != QFont.Weight.Bold else QFont.Weight.Normal)
+        cursor.setCharFormat(formato)
+        self.text_edit.setCurrentCharFormat(formato)
+    
+    def aplicar_cursiva(self):
+        """Aplica formato cursiva al texto seleccionado o activa para el siguiente texto"""
+        cursor = self.text_edit.textCursor()
+        formato = cursor.charFormat()
+        formato.setFontItalic(not formato.fontItalic())
+        cursor.setCharFormat(formato)
+        self.text_edit.setCurrentCharFormat(formato)
+    
+    def aplicar_subrayado(self):
+        """Aplica formato subrayado al texto seleccionado o activa para el siguiente texto"""
+        cursor = self.text_edit.textCursor()
+        formato = cursor.charFormat()
+        formato.setFontUnderline(not formato.fontUnderline())
+        cursor.setCharFormat(formato)
+        self.text_edit.setCurrentCharFormat(formato)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
