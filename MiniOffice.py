@@ -8,6 +8,7 @@ from PySide6.QtCore import QSize, QThread, Signal
 import sys
 import speech_recognition as sr
 import threading
+from contadorWidget import WordCounterWidget
 
 class MiniOffice(QMainWindow):
     def __init__(self):
@@ -66,8 +67,13 @@ class MiniOffice(QMainWindow):
 
         self.barra_estado = QStatusBar()
         self.setStatusBar(self.barra_estado)
-        self.etiqueta_contador = QLabel("Palabras: 0 | Caracteres: 0")
-        self.barra_estado.addPermanentWidget(self.etiqueta_contador)
+        
+        # Integración del widget de contador
+        self.contador_widget = WordCounterWidget()
+        self.barra_estado.addPermanentWidget(self.contador_widget)
+        
+        # Conexión de señal (opcional, para registro u otras acciones)
+        self.contador_widget.conteoActualizado.connect(self.imprimir_conteo_consola)
         
         # Inicializar reconocedor de voz
         self.recognizer = sr.Recognizer()
@@ -152,9 +158,11 @@ class MiniOffice(QMainWindow):
    
     def actualizar_contador_palabras(self):
         texto = self.text_edit.toPlainText()
-        palabras = len(texto.split())
-        caracteres = len(texto)
-        self.etiqueta_contador.setText(f"Palabras: {palabras} | Caracteres: {caracteres}")
+        self.contador_widget.update_from_text(texto)
+
+    def imprimir_conteo_consola(self, palabras, caracteres):
+        # Esta función recibe la señal del contadorWidget
+        print(f"Señal recibida - Palabras: {palabras}, Caracteres: {caracteres}")
 
     
     def nuevo_documento(self):
