@@ -135,10 +135,19 @@ Verifica que:
 - Reduce el ruido de fondo
 - Acércate más al micrófono
 
+- ### 🧩 Integración de Componentes
+Se ha modularizado la funcionalidad de estadísticas mediante la integración del componente `contadorWidget`.
+**Cambios realizados:**
+- **Modularización:** Se sustituyó la lógica básica de conteo en [MiniOffice.py] por el widget especializado [WordCounterWidget].
+- **Señales y Slots:** Implementación de un sistema de señales (`Signal`) para la comunicación reactiva entre el editor de texto y la barra de estado.
+- **Nuevas Métricas:** Además del conteo de palabras y caracteres, ahora se calcula y visualiza el tiempo estimado de lectura en tiempo real.
+- **Interfaz Fluida:** El widget se integra nativamente en la `QStatusBar` usando `addPermanentWidget` para una apariencia consistente.
+
 ## 📄 Licencia
 
 Este proyecto es de código abierto y está disponible para uso educativo.
 
 ---
 Desarrollado con Python, PySide6, PyAudio y SpeechRecognition
+
 
